@@ -1,0 +1,20 @@
+mkdir mern-crud
+cd mern-crud
+mkdir backend frontend
+
+cd backend
+npm init -y
+npm install express mongoose dotenv cors
+
+cd ../frontend
+npm create vite@latest . -- --template react
+npm install axios
+
+cd ../backend
+node server.js
+
+cd ../frontend
+npm run dev
+
+cd frontend
+npm install

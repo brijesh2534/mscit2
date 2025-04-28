@@ -1,0 +1,309 @@
+Code Files
+File: app/build.gradle.kts
+kotlin
+
+Copy
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "com.example.brijeshcrud"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.example.brijeshcrud"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("com.google.android.material:material:1.10.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+}
+File: app/src/main/java/com/example/brijeshcrud/Person.kt
+kotlin
+
+Copy
+package com.example.brijeshcrud
+
+data class Person(
+    val id: Int = 0,
+    val name: String,
+    val age: Int
+)
+File: app/src/main/java/com/example/brijeshcrud/DatabaseHelper.kt
+kotlin
+
+Copy
+package com.example.brijeshcrud
+
+import android.content.ContentValues
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
+
+class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
+
+    companion object {
+        private const val DATABASE_NAME = "PersonDB"
+        private const val DATABASE_VERSION = 1
+        private const val TABLE_NAME = "persons"
+        private const val KEY_ID = "id"
+        private const val KEY_NAME = "name"
+        private const val KEY_AGE = "age"
+    }
+
+    override fun onCreate(db: SQLiteDatabase) {
+        val createTable = """
+            CREATE TABLE $TABLE_NAME (
+                $KEY_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $KEY_NAME TEXT,
+                $KEY_AGE INTEGER
+            )
+        """.trimIndent()
+        db.execSQL(createTable)
+    }
+
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        db.execSQL("DROP TABLE IF EXISTS $TABLE_NAME")
+        onCreate(db)
+    }
+
+    fun addPerson(person: Person): Long {
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            put(KEY_NAME, person.name)
+            put(KEY_AGE, person.age)
+        }
+        val id = db.insert(TABLE_NAME, null, values)
+        db.close()
+        return id
+    }
+
+    fun getAllPersons(): List<Person> {
+        val personList = mutableListOf<Person>()
+        val db = this.readableDatabase
+        val cursor = db.rawQuery("SELECT * FROM $TABLE_NAME", null)
+
+        if (cursor.moveToFirst()) {
+            do {
+                val person = Person(
+                    id = cursor.getInt(cursor.getColumnIndexOrThrow(KEY_ID)),
+                    name = cursor.getString(cursor.getColumnIndexOrThrow(KEY_NAME)),
+                    age = cursor.getInt(cursor.getColumnIndexOrThrow(KEY_AGE))
+                )
+                personList.add(person)
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
+        db.close()
+        return personList
+    }
+
+    fun updatePerson(person: Person): Int {
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            put(KEY_NAME, person.name)
+            put(KEY_AGE, person.age)
+        }
+        val rowsAffected = db.update(TABLE_NAME, values, "$KEY_ID = ?", arrayOf(person.id.toString()))
+        db.close()
+        return rowsAffected
+    }
+
+    fun deletePerson(id: Int): Int {
+        val db = this.writableDatabase
+        val rowsAffected = db.delete(TABLE_NAME, "$KEY_ID = ?", arrayOf(id.toString()))
+        db.close()
+        return rowsAffected
+    }
+}
+File: app/src/main/java/com/example/brijeshcrud/MainActivity.kt
+kotlin
+
+Copy
+package com.example.brijeshcrud
+
+import android.os.Bundle
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ListView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var dbHelper: DatabaseHelper
+    private lateinit var nameInput: EditText
+    private lateinit var ageInput: EditText
+    private lateinit var addButton: Button
+    private lateinit var updateButton: Button
+    private lateinit var personListView: ListView
+    private lateinit var personAdapter: ArrayAdapter<String>
+    private val personDisplayList = mutableListOf<String>()
+    private var selectedPersonId: Int = 0
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        dbHelper = DatabaseHelper(this)
+        nameInput = findViewById(R.id.nameInput)
+        ageInput = findViewById(R.id.ageInput)
+        addButton = findViewById(R.id.addButton)
+        updateButton = findViewById(R.id.updateButton)
+        personListView = findViewById(R.id.personListView)
+
+        personAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, personDisplayList)
+        personListView.adapter = personAdapter
+
+        loadPersons()
+
+        addButton.setOnClickListener {
+            val name = nameInput.text.toString()
+            val age = ageInput.text.toString().toIntOrNull()
+            if (name.isNotEmpty() && age != null) {
+                val person = Person(name = name, age = age)
+                dbHelper.addPerson(person)
+                clearInputs()
+                loadPersons()
+                Toast.makeText(this, "Person Added", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Please enter valid data", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        personListView.setOnItemClickListener { _, _, position, _ ->
+            val personData = personDisplayList[position].split(" - ")
+            val id = personData[0].substringAfter("ID: ").toInt()
+            val name = personData[1].substringAfter("Name: ")
+            val age = personData[2].substringAfter("Age: ").toInt()
+
+            selectedPersonId = id
+            nameInput.setText(name)
+            ageInput.setText(age.toString())
+            updateButton.isEnabled = true
+        }
+
+        updateButton.setOnClickListener {
+            val name = nameInput.text.toString()
+            val age = ageInput.text.toString().toIntOrNull()
+            if (name.isNotEmpty() && age != null && selectedPersonId != 0) {
+                val person = Person(id = selectedPersonId, name = name, age = age)
+                dbHelper.updatePerson(person)
+                clearInputs()
+                loadPersons()
+                updateButton.isEnabled = false
+                Toast.makeText(this, "Person Updated", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Please select a person and enter valid data", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        personListView.setOnItemLongClickListener { _, _, position, _ ->
+            val personData = personDisplayList[position].split(" - ")
+            val id = personData[0].substringAfter("ID: ").toInt()
+            dbHelper.deletePerson(id)
+            loadPersons()
+            Toast.makeText(this, "Person Deleted", Toast.LENGTH_SHORT).show()
+            true
+        }
+    }
+
+    private fun loadPersons() {
+        personDisplayList.clear()
+        val persons = dbHelper.getAllPersons()
+        persons.forEach { person ->
+            personDisplayList.add("ID: ${person.id} - Name: ${person.name} - Age: ${person.age}")
+        }
+        personAdapter.notifyDataSetChanged()
+    }
+
+    private fun clearInputs() {
+        nameInput.text.clear()
+        ageInput.text.clear()
+        selectedPersonId = 0
+    }
+}
+File: app/src/main/res/layout/activity_main.xml
+xml
+
+Copy
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/nameInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Enter Name"
+        android:inputType="textPersonName" />
+
+    <EditText
+        android:id="@+id/ageInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Enter Age"
+        android:inputType="number" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/addButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Add" />
+
+        <Button
+            android:id="@+id/updateButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Update"
+            android:enabled="false" />
+    </LinearLayout>
+
+    <ListView
+        android:id="@+id/personListView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+</LinearLayout>
+File: app/src/main/res/values/strings.xml
+xml
+
+Copy
+<resources>
+    <string name="app_name">BrijeshCrud</string>
+</resources>
